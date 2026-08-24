@@ -9,9 +9,9 @@ export default function SmartAssetMonitorTIJ() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   
-  const [selectedSysIndex, setSelectedSysIndex] = useState(0);
-  const [selectedParentIndex, setSelectedParentIndex] = useState(0);
-  const [selectedItemIndex, setSelectedItemIndex] = useState(0);
+  // สถานะการเลือกดูและบันทึก
+  const [selectedSystem, setSelectedSystem] = useState('all');
+  const [activeItem, setActiveItem] = useState(null);
 
   // ฟอร์มบันทึกการทำงาน
   const [formData, setFormData] = useState({
@@ -46,13 +46,12 @@ export default function SmartAssetMonitorTIJ() {
     loadData();
   }, []);
 
-  // 🛠️ Mapping โครงสร้างข้อมูลตามที่คุณระบุมา (แยกทุกแถวอิสระด้วย rowIndex)
-  const structuredData = useMemo(() => {
+  // จัดกลุ่มข้อมูลแบบโครงสร้างต้นไม้ (Tree / Cable Node Structure)
+  const assetTree = useMemo(() => {
     if (!sheetData.length) return [];
     const sysMap = new Map();
 
     sheetData.forEach((row, rowIndex) => {
-      // ดึงค่าตามคอลัมน์โครงสร้างจริง
       const mainSys = row["ระบบเครื่องจักร"] || row["ระบบ"] || "ระบบอื่นๆ";
       const parentDev = row["เครื่องจักรย่อย"] || row["เครื่องจักร"] || "อุปกรณ์ทั่วไป";
       const itemDev = row["ระบบประกอบเครื่องจักร"] || `รายการที่ ${rowIndex + 1}`;
@@ -84,24 +83,23 @@ export default function SmartAssetMonitorTIJ() {
     return result;
   }, [sheetData]);
 
-  const currentSys = structuredData[selectedSysIndex] || structuredData[0];
-  const currentParent = currentSys?.parents[selectedParentIndex] || currentSys?.parents[0];
-  const currentItem = currentParent?.items[selectedItemIndex] || currentParent?.items[0];
+  const filteredSystems = selectedSystem === 'all' 
+    ? assetTree 
+    : assetTree.filter(sys => sys.name === selectedSystem);
 
-  // ส่งข้อมูลบันทึกกลับไปที่ Google Sheet
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!currentItem) return;
+    if (!activeItem) return;
 
     setIsSubmitting(true);
     setSuccessMsg(false);
 
     const payload = {
       timestamp: new Date().toLocaleString('th-TH'),
-      rowIndex: currentItem.id,
-      mainSystem: currentSys?.name,
-      parentMachine: currentParent?.name,
-      subMachine: currentItem.name,
+      rowIndex: activeItem.id,
+      mainSystem: activeItem.mainSys,
+      parentMachine: activeItem.parentName,
+      subMachine: activeItem.name,
       ...formData
     };
 
@@ -124,197 +122,219 @@ export default function SmartAssetMonitorTIJ() {
   };
 
   return (
-    <div style={{ backgroundColor: '#070b14', minHeight: '100vh', color: '#e2e8f0', fontFamily: 'monospace', padding: '16px' }}>
+    <div style={{ backgroundColor: '#070b14', minHeight: '100vh', color: '#e2e8f0', fontFamily: 'system-ui, -apple-system, sans-serif', padding: '20px', boxSizing: 'border-box', overflowX: 'hidden' }}>
       
-      {/* Header */}
-      <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #1e293b', paddingBottom: '12px', marginBottom: '16px' }}>
+      {/* Header โครงสร้างองค์กร */}
+      <header style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #1e293b', paddingBottom: '16px', marginBottom: '20px', gap: '12px' }}>
         <div>
-          <span style={{ color: '#00f2ff', fontSize: '10px', letterSpacing: '2px', fontWeight: 'bold' }}>BSM-TIJ FACILITY MANAGEMENT HUB</span>
-          <h1 style={{ margin: '2px 0 0 0', fontSize: '18px', color: '#fff' }}>⚡ ASSET MONITOR & WORK LOG SYSTEM</h1>
+          <div style={{ color: '#00f2ff', fontSize: '11px', letterSpacing: '2px', fontWeight: 'bold', textTransform: 'uppercase' }}>Thailand Institute of Justice (TIJ) - BSM Division</div>
+          <h1 style={{ margin: '4px 0 0 0', fontSize: '20px', color: '#fff', fontWeight: '700' }}>⚡ Facility Asset Cable & Node Intelligence Hub</h1>
         </div>
-        <button onClick={loadData} style={{ background: '#0f172a', color: '#00f2ff', border: '1px solid #00f2ff', padding: '6px 12px', borderRadius: '6px', cursor: 'pointer', fontSize: '11px' }}>
-          🔄 โหลดข้อมูลใหม่ (Sync)
-        </button>
+        <div style={{ display: 'flex', gap: '8px' }}>
+          <button onClick={loadData} style={{ background: '#0f172a', color: '#00f2ff', border: '1px solid #00f2ff', padding: '8px 14px', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}>
+            🔄 ซิงค์ข้อมูลใหม่
+          </button>
+        </div>
       </header>
 
       {loading ? (
-        <div style={{ height: '60vh', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#00f2ff' }}>กำลังเชื่อมต่อฐานข้อมูล Google Sheet...</div>
+        <div style={{ height: '50vh', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#00f2ff', fontSize: '14px' }}>กำลังโหลดโครงสร้างระบบอาคาร...</div>
       ) : error ? (
-        <div style={{ height: '60vh', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#ef4444' }}>เกิดข้อผิดพลาด: {error}</div>
+        <div style={{ height: '50vh', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#ef4444', fontSize: '14px' }}>เกิดข้อผิดพลาด: {error}</div>
       ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: '260px 1fr 340px', gap: '16px', alignItems: 'start' }}>
-          
-          {/* คอลัมน์ที่ 1: ระบบหลัก */}
-          <div style={{ background: '#0f172a', border: '1px solid #1e293b', borderRadius: '8px', padding: '12px' }}>
-            <div style={{ fontSize: '11px', color: '#94a3b8', fontWeight: 'bold', marginBottom: '10px' }}>ระบบหลักทั้งหมด ({structuredData.length})</div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '75vh', overflowY: 'auto' }}>
-              {structuredData.map((sys, idx) => (
-                <div 
-                  key={idx}
-                  onClick={() => { setSelectedSysIndex(idx); setSelectedParentIndex(0); setSelectedItemIndex(0); }}
-                  style={{
-                    background: selectedSysIndex === idx ? '#1e293b' : '#090d16',
-                    border: selectedSysIndex === idx ? '1px solid #00f2ff' : '1px solid #1e293b',
-                    padding: '10px', borderRadius: '6px', cursor: 'pointer'
-                  }}
-                >
-                  <div style={{ fontSize: '12px', fontWeight: 'bold', color: '#fff' }}>{sys.name}</div>
-                  <div style={{ fontSize: '10px', color: '#00f2ff', marginTop: '2px' }}>{sys.parents.length} หมวดอุปกรณ์</div>
-                </div>
-              ))}
-            </div>
+        <div>
+          {/* ตัวกรองระบบหลัก (System Filters) */}
+          <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginBottom: '20px' }}>
+            <button
+              onClick={() => setSelectedSystem('all')}
+              style={{
+                background: selectedSystem === 'all' ? '#00f2ff' : '#0f172a',
+                color: selectedSystem === 'all' ? '#070b14' : '#94a3b8',
+                border: '1px solid #1e293b', padding: '6px 12px', borderRadius: '6px', fontSize: '11px', fontWeight: 'bold', cursor: 'pointer'
+              }}
+            >
+              🌐 แสดงทั้งหมด ({assetTree.length})
+            </button>
+            {assetTree.map((sys, idx) => (
+              <button
+                key={idx}
+                onClick={() => setSelectedSystem(sys.name)}
+                style={{
+                  background: selectedSystem === sys.name ? '#00f2ff' : '#0f172a',
+                  color: selectedSystem === sys.name ? '#070b14' : '#94a3b8',
+                  border: '1px solid #1e293b', padding: '6px 12px', borderRadius: '6px', fontSize: '11px', fontWeight: 'bold', cursor: 'pointer'
+                }}
+              >
+                {sys.name}
+              </button>
+            ))}
           </div>
 
-          {/* คอลัมน์ที่ 2: รายการอุปกรณ์และรายละเอียด */}
-          <div style={{ background: '#0f172a', border: '1px solid #1e293b', borderRadius: '8px', padding: '16px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
-            
-            {/* แท็บหมวดอุปกรณ์ย่อย */}
-            <div style={{ display: 'flex', gap: '6px', overflowX: 'auto', paddingBottom: '6px', borderBottom: '1px solid #1e293b' }}>
-              {currentSys?.parents.map((p, idx) => (
-                <button
-                  key={idx}
-                  onClick={() => { setSelectedParentIndex(idx); setSelectedItemIndex(0); }}
-                  style={{
-                    background: selectedParentIndex === idx ? '#00f2ff' : '#090d16',
-                    color: selectedParentIndex === idx ? '#070b14' : '#94a3b8',
-                    border: '1px solid #1e293b', padding: '6px 10px', borderRadius: '4px', fontSize: '11px', fontWeight: 'bold', cursor: 'pointer', whiteSpace: 'nowrap'
-                  }}
-                >
-                  {p.name} ({p.items.length})
-                </button>
-              ))}
-            </div>
+          {/* ผังโครงสร้างแบบ Node & Cable Tree View */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+            {filteredSystems.map((sys, sIdx) => (
+              <div key={sIdx} style={{ background: '#090d16', border: '1px solid #1e293b', borderRadius: '10px', padding: '16px', position: 'relative' }}>
+                
+                {/* หัวข้อระบบหลัก */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '14px', borderBottom: '1px solid #1e293b', paddingBottom: '10px' }}>
+                  <div style={{ width: '8px', height: '8px', backgroundColor: '#00f2ff', borderRadius: '50%', boxShadow: '0 0 8px #00f2ff' }}></div>
+                  <h2 style={{ margin: 0, fontSize: '14px', color: '#fff', fontWeight: 'bold' }}>{sys.name}</h2>
+                </div>
 
-            {/* รายการชิ้นย่อยภายในหมวด (เช่น ลิฟต์ตัวที่ 1-5 จะแสดงครบถ้วนแยกการคลิก) */}
-            <div>
-              <div style={{ fontSize: '11px', color: '#94a3b8', marginBottom: '8px' }}>รายการย่อยภายใต้: <span style={{ color: '#fff' }}>{currentParent?.name}</span></div>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '8px', maxHeight: '25vh', overflowY: 'auto' }}>
-                {currentParent?.items.map((item, idx) => (
-                  <div
-                    key={item.id}
-                    onClick={() => setSelectedItemIndex(idx)}
-                    style={{
-                      background: '#090d16',
-                      border: selectedItemIndex === idx ? '2px solid #00f2ff' : '1px solid #1e293b',
-                      padding: '8px', borderRadius: '6px', cursor: 'pointer'
-                    }}
-                  >
-                    <div style={{ fontSize: '11px', fontWeight: 'bold', color: '#fff' }}>{item.name}</div>
-                    <div style={{ fontSize: '9px', color: '#00f2ff', marginTop: '2px' }}>สถานะ: {item.status}</div>
-                  </div>
-                ))}
-              </div>
-            </div>
+                {/* สาขาอุปกรณ์ย่อย (Cable Branches) */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', paddingLeft: '12px', borderLeft: '2px dashed #1e293b', marginLeft: '4px' }}>
+                  {sys.parents.map((parent, pIdx) => (
+                    <div key={pIdx} style={{ background: '#0f172a', border: '1px solid #1e293b', borderRadius: '8px', padding: '12px' }}>
+                      <div style={{ fontSize: '12px', color: '#38bdf8', fontWeight: 'bold', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <span>📂</span> {parent.name}
+                      </div>
 
-            {/* แสดงข้อมูลดิบ (Raw Data) ของแถวที่เลือก */}
-            {currentItem && (
-              <div style={{ background: '#090d16', border: '1px solid #1e293b', borderRadius: '6px', padding: '12px' }}>
-                <div style={{ fontSize: '11px', color: '#00f2ff', fontWeight: 'bold', marginBottom: '8px' }}>📋 ข้อมูลจาก Google Sheet (Row #{currentItem.id + 1})</div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px', maxHeight: '200px', overflowY: 'auto' }}>
-                  {Object.entries(currentItem.rawRow).map(([key, val], idx) => (
-                    <div key={idx} style={{ fontSize: '10px', background: '#0f172a', padding: '6px', borderRadius: '4px', border: '1px solid #1e293b' }}>
-                      <span style={{ color: '#94a3b8', display: 'block' }}>{key}:</span>
-                      <span style={{ color: '#fff', fontWeight: 'bold' }}>{String(val || '-')}</span>
+                      {/* รายการโหนดอุปกรณ์ย่อย (Nodes) */}
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '8px' }}>
+                        {parent.items.map((item) => {
+                          const isSelected = activeItem?.id === item.id;
+                          return (
+                            <div
+                              key={item.id}
+                              onClick={() => setActiveItem({ ...item, mainSys: sys.name, parentName: parent.name })}
+                              style={{
+                                background: isSelected ? '#1e293b' : '#070b14',
+                                border: isSelected ? '1px solid #00f2ff' : '1px solid #1e293b',
+                                borderRadius: '6px', padding: '10px', cursor: 'pointer',
+                                transition: 'all 0.2s ease',
+                                boxShadow: isSelected ? '0 0 10px rgba(0, 242, 255, 0.2)' : 'none'
+                              }}
+                            >
+                              <div style={{ fontSize: '11px', fontWeight: 'bold', color: '#fff', marginBottom: '4px' }}>{item.name}</div>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '9px' }}>
+                                <span style={{ color: item.status === 'Critical' ? '#ef4444' : item.status === 'Warning' ? '#f59e0b' : '#10b981', fontWeight: 'bold' }}>
+                                  ● {item.status}
+                                </span>
+                                <span style={{ color: '#64748b' }}>Row #{item.id + 1}</span>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
                     </div>
                   ))}
                 </div>
+
               </div>
-            )}
-
+            ))}
           </div>
 
-          {/* คอลัมน์ที่ 3: ฟอร์มบันทึกการทำงาน */}
-          <div style={{ background: '#0f172a', border: '1px solid #1e293b', borderRadius: '8px', padding: '16px' }}>
-            <div style={{ fontSize: '12px', color: '#00f2ff', fontWeight: 'bold', borderBottom: '1px solid #1e293b', paddingBottom: '8px', marginBottom: '12px' }}>
-              📝 บันทึกประวัติการปฏิบัติงาน
-            </div>
-
-            {currentItem ? (
-              <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                <div style={{ background: '#090d16', padding: '8px', borderRadius: '4px', border: '1px solid #1e293b' }}>
-                  <div style={{ fontSize: '9px', color: '#94a3b8' }}>เป้าหมาย:</div>
-                  <div style={{ fontSize: '11px', color: '#10b981', fontWeight: 'bold' }}>{currentItem.name}</div>
-                </div>
-
+          {/* ส่วนฟอร์มบันทึกการปฏิบัติงานและดูข้อมูลดิบ (แสดงขึ้นมาเมื่อเลือกโหนด) */}
+          {activeItem && (
+            <div style={{ marginTop: '24px', background: '#0f172a', border: '2px solid #00f2ff', borderRadius: '12px', padding: '20px', boxShadow: '0 10px 30px rgba(0,0,0,0.5)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', borderBottom: '1px solid #1e293b', paddingBottom: '10px' }}>
                 <div>
-                  <label style={{ fontSize: '10px', color: '#94a3b8', display: 'block', marginBottom: '2px' }}>ประเภทกิจกรรม</label>
-                  <select 
-                    value={formData.actionType} 
-                    onChange={(e) => setFormData({...formData, actionType: e.target.value})}
-                    style={{ width: '100%', background: '#090d16', color: '#fff', border: '1px solid #1e293b', padding: '6px', borderRadius: '4px', fontSize: '11px' }}
-                  >
-                    <option value="PM (บำรุงรักษาเชิงป้องกัน)">🛠️ PM (บำรุงรักษาเชิงป้องกัน)</option>
-                    <option value="Repair (ซ่อมแซมแก้ไข)">🔧 Repair (ซ่อมแซมแก้ไข)</option>
-                    <option value="Replace Spare Part (เปลี่ยนอะไหล่)">⚙️ เปลี่ยนอะไหล่</option>
-                    <option value="Inspect (ตรวจสอบสภาพ)">🔍 ตรวจสอบสภาพ</option>
-                  </select>
+                  <span style={{ fontSize: '10px', color: '#00f2ff', textTransform: 'uppercase' }}>Selected Node Target</span>
+                  <h3 style={{ margin: '2px 0 0 0', fontSize: '14px', color: '#fff' }}>{activeItem.name} <span style={{ fontSize: '11px', color: '#94a3b8' }}>({activeItem.parentName})</span></h3>
                 </div>
+                <button onClick={() => setActiveItem(null)} style={{ background: 'transparent', border: 'none', color: '#94a3b8', cursor: 'pointer', fontSize: '16px' }}>✕</button>
+              </div>
 
-                <div>
-                  <label style={{ fontSize: '10px', color: '#94a3b8', display: 'block', marginBottom: '2px' }}>รายละเอียดงาน</label>
-                  <input 
-                    type="text" 
-                    placeholder="เช่น ตรวจสอบสลิง, เช็คระบบประตู" 
-                    value={formData.jobDetails}
-                    onChange={(e) => setFormData({...formData, jobDetails: e.target.value})}
-                    required
-                    style={{ width: '100%', background: '#090d16', color: '#fff', border: '1px solid #1e293b', padding: '6px', borderRadius: '4px', fontSize: '11px', boxSizing: 'border-box' }}
-                  />
-                </div>
-
-                <div>
-                  <label style={{ fontSize: '10px', color: '#94a3b8', display: 'block', marginBottom: '2px' }}>ค่าใช้จ่าย (บาท)</label>
-                  <input 
-                    type="number" 
-                    placeholder="0" 
-                    value={formData.cost}
-                    onChange={(e) => setFormData({...formData, cost: e.target.value})}
-                    style={{ width: '100%', background: '#090d16', color: '#fff', border: '1px solid #1e293b', padding: '6px', borderRadius: '4px', fontSize: '11px', boxSizing: 'border-box' }}
-                  />
-                </div>
-
-                <div>
-                  <label style={{ fontSize: '10px', color: '#94a3b8', display: 'block', marginBottom: '2px' }}>สถานะเครื่องหลังทำ</label>
-                  <select 
-                    value={formData.status} 
-                    onChange={(e) => setFormData({...formData, status: e.target.value})}
-                    style={{ width: '100%', background: '#090d16', color: '#fff', border: '1px solid #1e293b', padding: '6px', borderRadius: '4px', fontSize: '11px' }}
-                  >
-                    <option value="ปกติ">🟢 ปกติ (Normal)</option>
-                    <option value="เฝ้าระวัง">🟡 เฝ้าระวัง (Warning)</option>
-                    <option value="ชำรุดรอซ่อม">🔴 ชำรุดรอซ่อม (Critical)</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label style={{ fontSize: '10px', color: '#94a3b8', display: 'block', marginBottom: '2px' }}>ผู้ปฏิบัติงาน / ทีมช่าง</label>
-                  <input 
-                    type="text" 
-                    value={formData.technician}
-                    onChange={(e) => setFormData({...formData, technician: e.target.value})}
-                    required
-                    style={{ width: '100%', background: '#090d16', color: '#fff', border: '1px solid #1e293b', padding: '6px', borderRadius: '4px', fontSize: '11px', boxSizing: 'border-box' }}
-                  />
-                </div>
-
-                <button 
-                  type="submit" 
-                  disabled={isSubmitting}
-                  style={{ background: '#00f2ff', color: '#070b14', fontWeight: 'bold', border: 'none', padding: '8px', borderRadius: '6px', cursor: 'pointer', marginTop: '6px', fontSize: '11px' }}
-                >
-                  {isSubmitting ? 'กำลังบันทึก...' : '💾 บันทึกข้อมูลลงชีต'}
-                </button>
-
-                {successMsg && (
-                  <div style={{ color: '#10b981', fontSize: '10px', textAlign: 'center', marginTop: '4px' }}>
-                    ✅ บันทึกสำเร็จเรียบร้อย!
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px', alignItems: 'start' }}>
+                
+                {/* ข้อมูลดิบจากชีต */}
+                <div style={{ background: '#070b14', padding: '12px', borderRadius: '8px', border: '1px solid #1e293b' }}>
+                  <div style={{ fontSize: '11px', color: '#38bdf8', fontWeight: 'bold', marginBottom: '8px' }}>📋 ข้อมูลแถวปัจจุบันใน Google Sheet</div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px', maxHeight: '220px', overflowY: 'auto' }}>
+                    {Object.entries(activeItem.rawRow).map(([key, val], idx) => (
+                      <div key={idx} style={{ fontSize: '10px', background: '#0f172a', padding: '6px', borderRadius: '4px' }}>
+                        <span style={{ color: '#64748b', display: 'block' }}>{key}:</span>
+                        <span style={{ color: '#fff', fontWeight: '600' }}>{String(val || '-')}</span>
+                      </div>
+                    ))}
                   </div>
-                )}
-              </form>
-            ) : (
-              <div style={{ color: '#94a3b8', fontSize: '11px' }}>กรุณาเลือกอุปกรณ์ก่อนบันทึก</div>
-            )}
-          </div>
+                </div>
+
+                {/* ฟอร์มบันทึกงาน */}
+                <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  <div style={{ fontSize: '11px', color: '#10b981', fontWeight: 'bold' }}>✍️ บันทึกประวัติการบำรุงรักษา / ซ่อมแซม</div>
+                  
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                    <div>
+                      <label style={{ fontSize: '10px', color: '#94a3b8', display: 'block', marginBottom: '2px' }}>ประเภทกิจกรรม</label>
+                      <select 
+                        value={formData.actionType} 
+                        onChange={(e) => setFormData({...formData, actionType: e.target.value})}
+                        style={{ width: '100%', background: '#070b14', color: '#fff', border: '1px solid #1e293b', padding: '6px', borderRadius: '4px', fontSize: '11px' }}
+                      >
+                        <option value="PM (บำรุงรักษาเชิงป้องกัน)">🛠️ PM</option>
+                        <option value="Repair (ซ่อมแซมแก้ไข)">🔧 Repair</option>
+                        <option value="Replace Spare Part (เปลี่ยนอะไหล่)">⚙️ เปลี่ยนอะไหล่</option>
+                        <option value="Inspect (ตรวจสอบสภาพ)">🔍 ตรวจสอบ</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label style={{ fontSize: '10px', color: '#94a3b8', display: 'block', marginBottom: '2px' }}>สถานะเครื่อง</label>
+                      <select 
+                        value={formData.status} 
+                        onChange={(e) => setFormData({...formData, status: e.target.value})}
+                        style={{ width: '100%', background: '#070b14', color: '#fff', border: '1px solid #1e293b', padding: '6px', borderRadius: '4px', fontSize: '11px' }}
+                      >
+                        <option value="ปกติ">🟢 ปกติ</option>
+                        <option value="เฝ้าระวัง">🟡 เฝ้าระวัง</option>
+                        <option value="ชำรุดรอซ่อม">🔴 ชำรุดรอซ่อม</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label style={{ fontSize: '10px', color: '#94a3b8', display: 'block', marginBottom: '2px' }}>รายละเอียดการทำงาน</label>
+                    <input 
+                      type="text" 
+                      placeholder="เช่น ตรวจเช็คระบบตู้ MDB, ทำความสะอาดหน้าสัมผัส" 
+                      value={formData.jobDetails}
+                      onChange={(e) => setFormData({...formData, jobDetails: e.target.value})}
+                      required
+                      style={{ width: '100%', background: '#070b14', color: '#fff', border: '1px solid #1e293b', padding: '6px', borderRadius: '4px', fontSize: '11px', boxSizing: 'border-box' }}
+                    />
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                    <div>
+                      <label style={{ fontSize: '10px', color: '#94a3b8', display: 'block', marginBottom: '2px' }}>ค่าใช้จ่าย (บาท)</label>
+                      <input 
+                        type="number" 
+                        placeholder="0" 
+                        value={formData.cost}
+                        onChange={(e) => setFormData({...formData, cost: e.target.value})}
+                        style={{ width: '100%', background: '#070b14', color: '#fff', border: '1px solid #1e293b', padding: '6px', borderRadius: '4px', fontSize: '11px', boxSizing: 'border-box' }}
+                      />
+                    </div>
+                    <div>
+                      <label style={{ fontSize: '10px', color: '#94a3b8', display: 'block', marginBottom: '2px' }}>ผู้ปฏิบัติงาน</label>
+                      <input 
+                        type="text" 
+                        value={formData.technician}
+                        onChange={(e) => setFormData({...formData, technician: e.target.value})}
+                        required
+                        style={{ width: '100%', background: '#070b14', color: '#fff', border: '1px solid #1e293b', padding: '6px', borderRadius: '4px', fontSize: '11px', boxSizing: 'border-box' }}
+                      />
+                    </div>
+                  </div>
+
+                  <button 
+                    type="submit" 
+                    disabled={isSubmitting}
+                    style={{ background: '#00f2ff', color: '#070b14', fontWeight: 'bold', border: 'none', padding: '8px', borderRadius: '6px', cursor: 'pointer', marginTop: '4px', fontSize: '11px' }}
+                  >
+                    {isSubmitting ? 'กำลังบันทึกข้อมูล...' : '💾 บันทึกข้อมูลลง Google Sheet'}
+                  </button>
+
+                  {successMsg && (
+                    <div style={{ color: '#10b981', fontSize: '11px', textAlign: 'center', marginTop: '2px' }}>
+                      ✅ บันทึกข้อมูลเรียบร้อยแล้ว!
+                    </div>
+                  )}
+                </form>
+
+              </div>
+            </div>
+          )}
 
         </div>
       )}
