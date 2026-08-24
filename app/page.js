@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 
 // ⚠️ ใส่ URL Web App ที่ได้จาก Apps Script ของคุณที่นี่
-const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxQc50YGia3np6jE2_V4PgrDBoaMTczXHGd-wf9yRqp/dev';
+const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxHXKMuXFCsc3M89Wh39KkgL6OHKixTktv_xUcU9g_iJawwMDcFNJnLDggT-vY5P9ePyg/exec';
 
 export default function SmartAssetMonitor() {
   const [dataList, setDataList] = useState([]);
