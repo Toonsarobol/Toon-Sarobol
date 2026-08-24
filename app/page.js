@@ -46,15 +46,15 @@ export default function SmartAssetMonitorFull() {
     loadData();
   }, []);
 
-  // จัดกลุ่มโครงสร้างข้อมูล 3 ระดับจากชีต
+  // 🛠️ แก้ไข: จัดกลุ่มโครงสร้างข้อมูลโดยใช้ rowIndex เป็น ID เพื่อให้ลิฟต์ทุกตัว/ทุกแถวแยกกันอิสระ 100% ไม่ยุบรวม
   const structuredData = useMemo(() => {
     if (!sheetData.length) return [];
     const sysMap = new Map();
 
-    sheetData.forEach((row) => {
+    sheetData.forEach((row, rowIndex) => {
       const mainSys = row["ระบบเครื่องจักร"] || row["ระบบ"] || "ระบบอื่นๆ";
       const parentDev = row["เครื่องจักร"] || "อุปกรณ์หลัก";
-      const subDev = row["เครื่องจักรย่อย"] || row["ระบบประกอบเครื่องจักร"] || "รายการย่อย";
+      const subDev = row["เครื่องจักรย่อย"] || row["ระบบประกอบเครื่องจักร"] || `รายการที่ ${rowIndex + 1}`;
 
       if (!sysMap.has(mainSys)) sysMap.set(mainSys, new Map());
       const parentMap = sysMap.get(mainSys);
@@ -63,8 +63,9 @@ export default function SmartAssetMonitorFull() {
       const price = Number(row["ราคา"] || row["ราคาซ่อม"] || 0);
 
       parentMap.get(parentDev).push({
+        id: rowIndex,
         name: subDev,
-        code: row["รหัสทรัพย์สิน"] || row["รหัส"] || "-",
+        code: row["รหัสทรัพย์สิน"] || row["รหัส"] || `ITEM-${rowIndex}`,
         part: row["การเปลี่ยนอะไหล่เครื่องจักร"] || row["รายการอะไหล่"] || "ไม่มีการเปลี่ยน",
         price: price,
         status: row["สถานะ"] || (price > 50000 ? 'Critical' : price > 10000 ? 'Warning' : 'Normal'),
@@ -98,6 +99,7 @@ export default function SmartAssetMonitorFull() {
 
     const payload = {
       timestamp: new Date().toLocaleString('th-TH'),
+      rowIndex: currentSub.id,
       mainSystem: currentMain?.name,
       parentMachine: currentParent?.name,
       subMachine: currentSub?.name,
@@ -179,18 +181,18 @@ export default function SmartAssetMonitorFull() {
                     border: '1px solid #1e293b', padding: '6px 10px', borderRadius: '4px', fontSize: '11px', fontWeight: 'bold', cursor: 'pointer', whiteSpace: 'nowrap'
                   }}
                 >
-                  {p.name}
+                  {p.name} ({p.subNodes.length})
                 </button>
               ))}
             </div>
 
-            {/* รายการเครื่องจักรย่อย */}
+            {/* รายการเครื่องจักรย่อย (แสดงครบทุกตัว ไม่ยุบรวม) */}
             <div>
-              <div style={{ fontSize: '11px', color: '#94a3b8', marginBottom: '8px' }}>รายการอุปกรณ์ย่อยภายใต้: <span style={{ color: '#fff' }}>{currentParent?.name}</span></div>
+              <div style={{ fontSize: '11px', color: '#94a3b8', marginBottom: '8px' }}>รายการอุปกรณ์ย่อยทั้งหมดใต้: <span style={{ color: '#fff' }}>{currentParent?.name}</span></div>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '8px', maxHeight: '25vh', overflowY: 'auto' }}>
                 {currentParent?.subNodes.map((sub, idx) => (
                   <div
-                    key={idx}
+                    key={sub.id}
                     onClick={() => setSelectedSubNodeIndex(idx)}
                     style={{
                       background: '#090d16',
@@ -231,7 +233,7 @@ export default function SmartAssetMonitorFull() {
             {currentSub ? (
               <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                 <div style={{ background: '#090d16', padding: '8px', borderRadius: '4px', border: '1px solid #1e293b' }}>
-                  <div style={{ fontSize: '9px', color: '#94a3b8' }}>เป้าหมายอุปกรณ์:</div>
+                  <div style={{ fontSize: '9px', color: '#94a3b8' }}>เป้าหมายอุปกรณ์ (Row #{currentSub.id + 1}):</div>
                   <div style={{ fontSize: '11px', color: '#10b981', fontWeight: 'bold' }}>{currentSub.name}</div>
                 </div>
 
@@ -342,5 +344,3 @@ export default function SmartAssetMonitorFull() {
     </div>
   );
 }
-
- 
