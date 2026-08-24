@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 
-// 🌐 เชื่อมต่อ Google Apps Script Web App URL ของคุณโดยตรง
+// 🌐 Web App URL จาก Apps Script
 const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzrfogs14H_DYFZsY9EiYTCGzmntRL-ciqlbvnZ10udpnMi7gIvORkf8qJ2ETJ5ZPzK7g/exec';
 
 export default function SmartAssetMonitor() {
@@ -13,6 +13,15 @@ export default function SmartAssetMonitor() {
   const [selectedMainSysIndex, setSelectedMainSysIndex] = useState(0);
   const [selectedParentIndex, setSelectedParentIndex] = useState(0);
   const [selectedSubNodeIndex, setSelectedSubNodeIndex] = useState(0);
+
+  // 📝 State สำหรับฟอร์มบันทึกการทำงาน
+  const [actionType, setActionType] = useState('PM'); // PM, Repair, Inspect
+  const [partName, setPartName] = useState('');
+  const [cost, setCost] = useState('');
+  const [technician, setTechnician] = useState('');
+  const [remark, setRemark] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitSuccess, setSubmitSuccess] = useState(false);
 
   // ดึงข้อมูล Real-Time จาก Google Sheet
   const loadData = async () => {
@@ -40,7 +49,7 @@ export default function SmartAssetMonitor() {
     loadData();
   }, []);
 
-  // จัดกลุ่มข้อมูลจริงตามโครงสร้าง 3 ระดับ: ระบบเครื่องจักร -> เครื่องจักร -> เครื่องจักรย่อย
+  // จัดกลุ่มข้อมูลตามโครงสร้าง 3 ระดับ
   const structuredData = useMemo(() => {
     if (!sheetData || sheetData.length === 0) return [];
 
@@ -65,7 +74,7 @@ export default function SmartAssetMonitor() {
       parentMap.get(parentDev).push({
         name: subDev,
         code: row["ระบบประกอบเครื่องจักร"] || subDev,
-        part: row["การเปลี่ยนอะไหล่เครื่องจักร"] || row["รายการอะไหล่"] || "ไม่มีการบันทึกการเปลี่ยนอะไหล่",
+        part: row["การเปลี่ยนอะไหล่เครื่องจักร"] || row["รายการอะไหล่"] || "ไม่มีการบันทึก",
         price: price,
         status: row["สถานะ"] || (price > 50000 ? 'Critical' : price > 10000 ? 'Warning' : 'Online'),
         rawRow: row
@@ -94,7 +103,46 @@ export default function SmartAssetMonitor() {
   const currentParent = currentMainSystem?.parents[selectedParentIndex] || currentMainSystem?.parents[0];
   const currentSubNode = currentParent?.subNodes[selectedSubNodeIndex] || currentParent?.subNodes[0];
 
-  const ignoredKeys = ['ระบบเครื่องจักร', 'เครื่องจักร', 'เครื่องจักรย่อย', 'ราคา'];
+  // 📤 ฟังก์ชั่นส่งข้อมูลบันทึกไปยัง Google Sheet
+  const handleSubmitLog = async (e) => {
+    e.preventDefault();
+    if (!currentSubNode) return;
+
+    setIsSubmitting(true);
+    setSubmitSuccess(false);
+
+    const payload = {
+      timestamp: new Date().toLocaleString('th-TH'),
+      mainSystem: currentMainSystem?.name,
+      parentMachine: currentParent?.name,
+      subMachine: currentSubNode?.name,
+      actionType: actionType,
+      partName: partName,
+      cost: cost,
+      technician: technician,
+      remark: remark
+    };
+
+    try {
+      await fetch(APPS_SCRIPT_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+        mode: 'no-cors' // Google Apps Script POST ต้องใช้ no-cors
+      });
+
+      setSubmitSuccess(true);
+      setPartName('');
+      setCost('');
+      setRemark('');
+      setTimeout(() => setSubmitSuccess(false), 3000);
+      loadData(); // โหลดข้อมูลใหม่
+    } catch (err) {
+      alert('เกิดข้อผิดพลาดในการบันทึกข้อมูล: ' + err.message);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
 
   return (
     <div style={{ backgroundColor: '#090d16', minHeight: '100vh', color: '#f3f4f6', fontFamily: 'monospace', padding: '20px' }}>
@@ -103,10 +151,10 @@ export default function SmartAssetMonitor() {
       <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #1e293b', paddingBottom: '12px', marginBottom: '20px' }}>
         <div>
           <div style={{ color: '#00f2ff', fontSize: '11px', letterSpacing: '2px', fontWeight: 'bold' }}>
-            BSM-TIJ SMART ASSET & HARDWARE TOPOLOGY
+            BSM-TIJ SMART ASSET & WORK LOG SYSTEM
           </div>
           <h1 style={{ margin: '2px 0 0 0', fontSize: '20px', color: '#ffffff', fontWeight: 'bold' }}>
-            ⚡ REAL-TIME BUILDING ASSET MONITOR
+            ⚡ REAL-TIME BUILDING ASSET MONITOR & LOG
           </h1>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
@@ -114,45 +162,36 @@ export default function SmartAssetMonitor() {
             onClick={loadData} 
             style={{ backgroundColor: '#0f172a', color: '#00f2ff', border: '1px solid #00f2ff', padding: '6px 14px', borderRadius: '6px', cursor: 'pointer', fontSize: '11px' }}
           >
-            🔄 Sync Sheet Data
+            🔄 Sync Data
           </button>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', backgroundColor: '#0f172a', padding: '6px 14px', borderRadius: '20px', border: '1px solid #1e293b' }}>
-            <span style={{ width: '8px', height: '8px', backgroundColor: loading ? '#f59e0b' : error ? '#ef4444' : '#10b981', borderRadius: '50%', boxShadow: `0 0 8px ${loading ? '#f59e0b' : error ? '#ef4444' : '#10b981'}` }}></span>
-            <span style={{ fontSize: '11px', color: loading ? '#f59e0b' : error ? '#ef4444' : '#10b981', fontWeight: 'bold' }}>
-              {loading ? 'SYNCING...' : error ? 'ERROR' : 'LIVE CONNECTED'}
-            </span>
-          </div>
         </div>
       </header>
 
       {/* 🟢 STATE HANDLERS */}
       {loading ? (
         <div style={{ height: 'calc(100vh - 150px)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#00f2ff', fontSize: '14px' }}>
-          ⚡ กำลังดึงข้อมูล Real-Time จาก Google Sheet TIJ...
+          ⚡ กำลังดึงข้อมูล Real-Time จาก Google Sheet...
         </div>
       ) : error ? (
-        <div style={{ height: 'calc(100vh - 150px)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#ef4444', backgroundColor: '#0f172a', borderRadius: '10px', border: '1px solid #ef444440' }}>
-          <div style={{ fontSize: '16px', fontWeight: 'bold', marginBottom: '8px' }}>⚠️ เชื่อมต่อ Database ไม่สำเร็จ</div>
-          <div style={{ fontSize: '12px', color: '#94a3b8' }}>{error}</div>
+        <div style={{ height: 'calc(100vh - 150px)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#ef4444', backgroundColor: '#0f172a', borderRadius: '10px' }}>
+          ⚠️ เชื่อมต่อ Database ไม่สำเร็จ: {error}
         </div>
       ) : structuredData.length === 0 ? (
-        <div style={{ height: 'calc(100vh - 150px)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#94a3b8', backgroundColor: '#0f172a', borderRadius: '10px' }}>
+        <div style={{ height: 'calc(100vh - 150px)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#94a3b8' }}>
           ไม่พบรายการข้อมูลใน Google Sheet
         </div>
       ) : (
         /* 🟢 MAIN 3-COLUMN DASHBOARD LAYOUT */
-        <div style={{ display: 'grid', gridTemplateColumns: '300px 1fr 320px', gap: '20px', height: 'calc(100vh - 110px)' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '280px 1fr 340px', gap: '20px', minHeight: 'calc(100vh - 110px)' }}>
           
-          {/* ================= COLUMN 1: MAIN MACHINES (ระบบเครื่องจักร) ================= */}
+          {/* ================= COLUMN 1: MAIN MACHINES ================= */}
           <div style={{ backgroundColor: '#0f172a', border: '1px solid #1e293b', borderRadius: '10px', padding: '16px', display: 'flex', flexDirection: 'column', gap: '12px', overflowY: 'auto' }}>
-            <div style={{ fontSize: '12px', color: '#94a3b8', fontWeight: 'bold', letterSpacing: '1px', marginBottom: '4px' }}>
+            <div style={{ fontSize: '12px', color: '#94a3b8', fontWeight: 'bold', letterSpacing: '1px' }}>
               SYSTEM CATEGORIES ({structuredData.length})
             </div>
 
             {structuredData.map((sys, idx) => {
               const isSelected = selectedMainSysIndex === idx;
-              const totalItems = sys.parents.reduce((acc, p) => acc + p.subNodes.length, 0);
-
               return (
                 <div
                   key={idx}
@@ -166,25 +205,20 @@ export default function SmartAssetMonitor() {
                     border: isSelected ? '1px solid #00f2ff' : '1px solid #1e293b',
                     borderRadius: '8px',
                     padding: '12px',
-                    cursor: 'pointer',
-                    transition: 'all 0.2s',
-                    boxShadow: isSelected ? '0 0 10px rgba(0, 242, 255, 0.15)' : 'none'
+                    cursor: 'pointer'
                   }}
                 >
-                  <div style={{ fontSize: '13px', fontWeight: 'bold', color: '#fff', marginBottom: '6px' }}>{sys.name}</div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '10px' }}>
-                    <span style={{ color: '#00f2ff' }}>{sys.parents.length} เครื่องจักรหลัก</span>
-                    <span style={{ color: '#64748b' }}>{totalItems} รายการย่อย</span>
-                  </div>
+                  <div style={{ fontSize: '13px', fontWeight: 'bold', color: '#fff' }}>{sys.name}</div>
+                  <div style={{ fontSize: '10px', color: '#00f2ff', marginTop: '4px' }}>{sys.parents.length} เครื่องจักรหลัก</div>
                 </div>
               );
             })}
           </div>
 
-          {/* ================= COLUMN 2: DATA STREAM TOPOLOGY (CABLE VISUALIZER) ================= */}
-          <div style={{ backgroundColor: '#0f172a', border: '1px solid #1e293b', borderRadius: '10px', padding: '20px', position: 'relative', display: 'flex', flexDirection: 'column' }}>
+          {/* ================= COLUMN 2: TOPOLOGY & SUB-NODES ================= */}
+          <div style={{ backgroundColor: '#0f172a', border: '1px solid #1e293b', borderRadius: '10px', padding: '20px', display: 'flex', flexDirection: 'column' }}>
             
-            {/* TAB เลือกเครื่องจักรหลัก (PARENT MACHINE) */}
+            {/* TAB เครื่องจักรหลัก */}
             <div style={{ display: 'flex', gap: '8px', overflowX: 'auto', paddingBottom: '10px', marginBottom: '15px', borderBottom: '1px solid #1e293b' }}>
               {currentMainSystem?.parents.map((p, idx) => (
                 <button
@@ -210,50 +244,34 @@ export default function SmartAssetMonitor() {
               ))}
             </div>
 
-            <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'space-between', position: 'relative', padding: '0 10px' }}>
+            <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'space-between', position: 'relative' }}>
               
-              {/* LEFT PARENT NODE */}
-              <div style={{ 
-                backgroundColor: '#090d16', 
-                border: '2px solid #00f2ff', 
-                borderRadius: '10px', 
-                padding: '16px', 
-                width: '210px', 
-                boxShadow: '0 0 20px rgba(0, 242, 255, 0.2)',
-                zIndex: 2 
-              }}>
-                <div style={{ fontSize: '9px', color: '#00f2ff', letterSpacing: '1px', marginBottom: '4px' }}>PARENT EQUIPMENT</div>
-                <div style={{ fontSize: '14px', fontWeight: 'bold', color: '#fff' }}>{currentParent?.name}</div>
-                <div style={{ fontSize: '10px', color: '#64748b', marginTop: '6px' }}>ระบบ: {currentMainSystem?.name}</div>
+              {/* PARENT NODE */}
+              <div style={{ backgroundColor: '#090d16', border: '2px solid #00f2ff', borderRadius: '10px', padding: '16px', width: '200px', zIndex: 2 }}>
+                <div style={{ fontSize: '9px', color: '#00f2ff' }}>PARENT EQUIPMENT</div>
+                <div style={{ fontSize: '14px', fontWeight: 'bold', color: '#fff', marginTop: '4px' }}>{currentParent?.name}</div>
               </div>
 
-              {/* SVG CABLE CONNECTIONS */}
+              {/* SVG CABLE */}
               <svg style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', pointerEvents: 'none', zIndex: 1 }}>
-                <defs>
-                  <linearGradient id="cableGrad" x1="0%" y1="0%" x2="100%" y2="0%">
-                    <stop offset="0%" stopColor="#00f2ff" />
-                    <stop offset="100%" stopColor="#ef4444" />
-                  </linearGradient>
-                </defs>
-                {currentParent?.subNodes.slice(0, 10).map((_, idx) => {
-                  const total = Math.min(currentParent.subNodes.length, 10);
+                {currentParent?.subNodes.slice(0, 8).map((_, idx) => {
+                  const total = Math.min(currentParent.subNodes.length, 8);
                   const startY = 50;
                   const endY = ((idx + 1) * (100 / (total + 1)));
                   return (
                     <path
                       key={idx}
-                      d={`M 220,${startY}% C 320,${startY}% 320,${endY}% 420,${endY}%`}
+                      d={`M 200,${startY}% C 300,${startY}% 300,${endY}% 400,${endY}%`}
                       fill="none"
-                      stroke="url(#cableGrad)"
-                      strokeWidth="2.5"
-                      style={{ filter: 'drop-shadow(0px 0px 5px #00f2ff)' }}
+                      stroke="#00f2ff"
+                      strokeWidth="2"
                     />
                   );
                 })}
               </svg>
 
-              {/* RIGHT SUB-NODES (รายการเครื่องจักรย่อย) */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', width: '240px', zIndex: 2, maxHeight: '100%', overflowY: 'auto', paddingRight: '4px' }}>
+              {/* SUB NODES */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', width: '230px', zIndex: 2, maxHeight: '100%', overflowY: 'auto' }}>
                 {currentParent?.subNodes.map((sub, idx) => {
                   const isSubSelected = selectedSubNodeIndex === idx;
                   return (
@@ -265,20 +283,11 @@ export default function SmartAssetMonitor() {
                         border: isSubSelected ? '2px solid #ef4444' : '1px solid #1e293b',
                         borderRadius: '8px',
                         padding: '10px',
-                        cursor: 'pointer',
-                        boxShadow: isSubSelected ? '0 0 12px rgba(239, 68, 68, 0.3)' : 'none',
-                        transition: 'all 0.2s'
+                        cursor: 'pointer'
                       }}
                     >
-                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '9px', color: '#64748b', marginBottom: '2px' }}>
-                        <span style={{ color: '#00f2ff' }}>{sub.code}</span>
-                        <span style={{ color: sub.status === 'Critical' ? '#ef4444' : sub.status === 'Warning' ? '#f59e0b' : '#10b981' }}>
-                          ● {sub.status}
-                        </span>
-                      </div>
-                      <div style={{ fontSize: '11px', fontWeight: 'bold', color: '#fff', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                        {sub.name}
-                      </div>
+                      <div style={{ fontSize: '11px', fontWeight: 'bold', color: '#fff' }}>{sub.name}</div>
+                      <div style={{ fontSize: '9px', color: '#94a3b8', marginTop: '2px' }}>อะไหล่: {sub.part}</div>
                     </div>
                   );
                 })}
@@ -287,57 +296,114 @@ export default function SmartAssetMonitor() {
             </div>
           </div>
 
-          {/* ================= COLUMN 3: FINANCIAL & DETAILS ANALYTICS ================= */}
-          <div style={{ backgroundColor: '#0f172a', border: '1px solid #1e293b', borderRadius: '10px', padding: '16px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
-            <div style={{ fontSize: '12px', color: '#94a3b8', fontWeight: 'bold', letterSpacing: '1px' }}>
-              FINANCIAL & ITEM DETAILS
+          {/* ================= COLUMN 3: WORK LOG ENTRY FORM (ฟอร์มบันทึกการทำงาน) ================= */}
+          <div style={{ backgroundColor: '#0f172a', border: '1px solid #1e293b', borderRadius: '10px', padding: '16px', display: 'flex', flexDirection: 'column', gap: '14px', overflowY: 'auto' }}>
+            <div style={{ fontSize: '12px', color: '#00f2ff', fontWeight: 'bold', letterSpacing: '1px', borderBottom: '1px solid #1e293b', paddingBottom: '8px' }}>
+              📝 บันทึกการทำงาน / ซ่อมบำรุง
             </div>
 
-            {currentSubNode && (
-              <div style={{ backgroundColor: '#090d16', border: '1px solid #1e293b', borderRadius: '8px', padding: '14px' }}>
-                <div style={{ fontSize: '10px', color: '#64748b' }}>อุปกรณ์ย่อยที่เลือก</div>
-                <div style={{ fontSize: '14px', fontWeight: 'bold', color: '#00f2ff', marginTop: '2px' }}>
-                  {currentSubNode.name}
-                </div>
-
-                <div style={{ marginTop: '14px', padding: '10px', backgroundColor: '#0f172a', borderRadius: '6px', border: '1px solid #1e293b' }}>
-                  <div style={{ fontSize: '10px', color: '#64748b' }}>🔧 รายการเปลี่ยนอะไหล่</div>
-                  <div style={{ fontSize: '12px', color: '#f59e0b', fontWeight: 'bold', marginTop: '4px' }}>
-                    {currentSubNode.part}
-                  </div>
-                </div>
+            {currentSubNode ? (
+              <form onSubmit={handleSubmitLog} style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                 
-                <div style={{ marginTop: '16px' }}>
-                  <div style={{ fontSize: '10px', color: '#64748b' }}>ราคาซ่อมบำรุง / เปลี่ยนอะไหล่</div>
-                  <div style={{ fontSize: '24px', fontWeight: 'bold', color: currentSubNode.price > 0 ? '#ef4444' : '#10b981', marginTop: '2px' }}>
-                    {currentSubNode.price > 0 ? `฿${currentSubNode.price.toLocaleString()}` : 'ไม่มีค่าใช้จ่าย'}
+                {/* ข้อมูลอุปกรณ์ที่เลือก */}
+                <div style={{ backgroundColor: '#090d16', padding: '10px', borderRadius: '6px', border: '1px solid #1e293b' }}>
+                  <div style={{ fontSize: '9px', color: '#64748b' }}>อุปกรณ์ที่กำลังบันทึก:</div>
+                  <div style={{ fontSize: '12px', color: '#10b981', fontWeight: 'bold' }}>{currentSubNode.name}</div>
+                  <div style={{ fontSize: '10px', color: '#94a3b8' }}>({currentParent?.name})</div>
+                </div>
+
+                {/* ประเภทการทำงาน */}
+                <div>
+                  <label style={{ fontSize: '10px', color: '#94a3b8', display: 'block', marginBottom: '4px' }}>ประเภทงาน (Action Type)</label>
+                  <select 
+                    value={actionType} 
+                    onChange={(e) => setActionType(e.target.value)}
+                    style={{ width: '100%', backgroundColor: '#090d16', color: '#fff', border: '1px solid #1e293b', padding: '6px', borderRadius: '4px', fontSize: '11px' }}
+                  >
+                    <option value="PM">🛠️ บำรุงรักษาเชิงป้องกัน (PM)</option>
+                    <option value="Repair">🔧 ซ่อมแซม / เปลี่ยนอะไหล่ (Repair)</option>
+                    <option value="Inspect">🔍 ตรวจสอบปกติ (Inspect)</option>
+                  </select>
+                </div>
+
+                {/* อะไหล่ที่เปลี่ยน */}
+                <div>
+                  <label style={{ fontSize: '10px', color: '#94a3b8', display: 'block', marginBottom: '4px' }}>รายการอะไหล่ / งานที่ทำ</label>
+                  <input 
+                    type="text" 
+                    placeholder="เช่น เปลี่ยนน้ำมันเครื่อง, เปลี่ยน Filter" 
+                    value={partName} 
+                    onChange={(e) => setPartName(e.target.value)}
+                    required
+                    style={{ width: '100%', backgroundColor: '#090d16', color: '#fff', border: '1px solid #1e293b', padding: '6px', borderRadius: '4px', fontSize: '11px', boxSizing: 'border-box' }}
+                  />
+                </div>
+
+                {/* ค่าใช้จ่าย */}
+                <div>
+                  <label style={{ fontSize: '10px', color: '#94a3b8', display: 'block', marginBottom: '4px' }}>ค่าใช้จ่าย (บาท)</label>
+                  <input 
+                    type="number" 
+                    placeholder="0" 
+                    value={cost} 
+                    onChange={(e) => setCost(e.target.value)}
+                    style={{ width: '100%', backgroundColor: '#090d16', color: '#fff', border: '1px solid #1e293b', padding: '6px', borderRadius: '4px', fontSize: '11px', boxSizing: 'border-box' }}
+                  />
+                </div>
+
+                {/* ช่างผู้บันทึก */}
+                <div>
+                  <label style={{ fontSize: '10px', color: '#94a3b8', display: 'block', marginBottom: '4px' }}>ผู้บันทึก / ทีมช่าง (BSM-TIJ)</label>
+                  <input 
+                    type="text" 
+                    placeholder="ระบุชื่อช่าง" 
+                    value={technician} 
+                    onChange={(e) => setTechnician(e.target.value)}
+                    required
+                    style={{ width: '100%', backgroundColor: '#090d16', color: '#fff', border: '1px solid #1e293b', padding: '6px', borderRadius: '4px', fontSize: '11px', boxSizing: 'border-box' }}
+                  />
+                </div>
+
+                {/* หมายเหตุ */}
+                <div>
+                  <label style={{ fontSize: '10px', color: '#94a3b8', display: 'block', marginBottom: '4px' }}>หมายเหตุเพิ่มเติม</label>
+                  <textarea 
+                    rows="2" 
+                    placeholder="รายละเอียดเพิ่มเติม..." 
+                    value={remark} 
+                    onChange={(e) => setRemark(e.target.value)}
+                    style={{ width: '100%', backgroundColor: '#090d16', color: '#fff', border: '1px solid #1e293b', padding: '6px', borderRadius: '4px', fontSize: '11px', boxSizing: 'border-box' }}
+                  />
+                </div>
+
+                {/* ปุ่ม Submit */}
+                <button 
+                  type="submit" 
+                  disabled={isSubmitting}
+                  style={{ 
+                    backgroundColor: isSubmitting ? '#64748b' : '#00f2ff', 
+                    color: '#090d16', 
+                    fontWeight: 'bold', 
+                    border: 'none', 
+                    padding: '8px', 
+                    borderRadius: '6px', 
+                    cursor: 'pointer',
+                    marginTop: '6px',
+                    fontSize: '12px'
+                  }}
+                >
+                  {isSubmitting ? '⏳ กำลังบันทึก...' : '💾 บันทึกข้อมูลลง Google Sheet'}
+                </button>
+
+                {submitSuccess && (
+                  <div style={{ color: '#10b981', fontSize: '10px', textAlign: 'center', marginTop: '4px' }}>
+                    ✅ บันทึกข้อมูลเข้า Google Sheet เรียบร้อยแล้ว!
                   </div>
-                </div>
-
-                {/* แสดง Raw Data เพิ่มเติมจาก Google Sheet */}
-                <div style={{ marginTop: '16px', borderTop: '1px dashed #1e293b', paddingTop: '12px' }}>
-                  <div style={{ fontSize: '10px', color: '#94a3b8', marginBottom: '6px' }}>📌 ข้อมูลในบันทึก (Sheet Row)</div>
-                  {Object.entries(currentSubNode.rawRow).map(([key, val], idx) => {
-                    if (ignoredKeys.includes(key)) return null;
-                    return (
-                      <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px', margin: '3px 0' }}>
-                        <span style={{ color: '#64748b' }}>{key}:</span>
-                        <span style={{ color: '#e2e8f0' }}>{String(val)}</span>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
+                )}
+              </form>
+            ) : (
+              <div style={{ color: '#64748b', fontSize: '11px' }}>โปรดเลือกอุปกรณ์เพื่อบันทึกงาน</div>
             )}
-
-            <div style={{ backgroundColor: '#090d16', border: '1px solid #1e293b', borderRadius: '8px', padding: '12px', marginTop: 'auto' }}>
-              <div style={{ fontSize: '10px', color: '#10b981', fontWeight: 'bold' }}>
-                🌐 REAL SHEET SYNCHRONIZED
-              </div>
-              <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '4px' }}>
-                จัดกลุ่มโครงสร้างจากรายชื่ออุปกรณ์จริงของ TIJ 100%
-              </div>
-            </div>
           </div>
 
         </div>
@@ -346,3 +412,5 @@ export default function SmartAssetMonitor() {
     </div>
   );
 }
+
+ 
