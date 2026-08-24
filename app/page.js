@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 
-// ⚠️ ใส่ URL Web App จาก Apps Script ของคุณที่นี่
+// 🌐 เชื่อมต่อ Google Apps Script Web App URL ของคุณโดยตรง
 const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzrfogs14H_DYFZsY9EiYTCGzmntRL-ciqlbvnZ10udpnMi7gIvORkf8qJ2ETJ5ZPzK7g/exec';
 
 export default function SmartAssetMonitor() {
@@ -19,9 +19,6 @@ export default function SmartAssetMonitor() {
     setLoading(true);
     setError(null);
     try {
-      if (!APPS_SCRIPT_URL || APPS_SCRIPT_URL.includes('YOUR_APPS_SCRIPT')) {
-        throw new Error('กรุณาระบุ APPS_SCRIPT_URL ให้ถูกต้อง');
-      }
       const res = await fetch(APPS_SCRIPT_URL);
       if (!res.ok) throw new Error('ไม่สามารถเชื่อมต่อ Google Sheet API ได้');
       const json = await res.json();
@@ -75,7 +72,6 @@ export default function SmartAssetMonitor() {
       });
     });
 
-    // แปลง Map เป็น Array เพื่อนำไป Render
     const result = [];
     sysMap.forEach((parentMap, mainSysName) => {
       const parentList = [];
@@ -94,10 +90,11 @@ export default function SmartAssetMonitor() {
     return result;
   }, [sheetData]);
 
-  // ตัวแปรสำหรับตำแหน่งข้อมูลที่เลือกปัจจุบัน
   const currentMainSystem = structuredData[selectedMainSysIndex] || structuredData[0];
   const currentParent = currentMainSystem?.parents[selectedParentIndex] || currentMainSystem?.parents[0];
   const currentSubNode = currentParent?.subNodes[selectedSubNodeIndex] || currentParent?.subNodes[0];
+
+  const ignoredKeys = ['ระบบเครื่องจักร', 'เครื่องจักร', 'เครื่องจักรย่อย', 'ราคา'];
 
   return (
     <div style={{ backgroundColor: '#090d16', minHeight: '100vh', color: '#f3f4f6', fontFamily: 'monospace', padding: '20px' }}>
@@ -321,7 +318,7 @@ export default function SmartAssetMonitor() {
                 <div style={{ marginTop: '16px', borderTop: '1px dashed #1e293b', paddingTop: '12px' }}>
                   <div style={{ fontSize: '10px', color: '#94a3b8', marginBottom: '6px' }}>📌 ข้อมูลในบันทึก (Sheet Row)</div>
                   {Object.entries(currentSubNode.rawRow).map(([key, val], idx) => {
-                    if (["ระบบเครื่องจักร", "เครื่องจักร", "เครื่องจักรย่อย", "ราคา"].includes(key)) return null;
+                    if (ignoredKeys.includes(key)) return null;
                     return (
                       <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px', margin: '3px 0' }}>
                         <span style={{ color: '#64748b' }}>{key}:</span>
@@ -346,9 +343,6 @@ export default function SmartAssetMonitor() {
         </div>
       )}
 
-    </div>
-  );
-}
     </div>
   );
 }
