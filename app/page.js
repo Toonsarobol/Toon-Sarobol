@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 
 // ⚠️ วาง URL Web App ที่ได้จาก Apps Script ของคุณที่นี่
-const APPS_SCRIPT_URL = 'YOUR_APPS_SCRIPT_URL_HERE';
+const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbyIXsOfZPC0UIdlA4Vaop0Lqd_yI3QmskSio5YY05z9T05kEx3S8S-rCaKmGYrmwwlZvw/exec';
 
 export default function TIJNetworkDashboard() {
   const [activeTab, setActiveTab] = useState('HVAC');
