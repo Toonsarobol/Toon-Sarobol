@@ -4,20 +4,20 @@ import React, { useState, useEffect, useMemo } from 'react';
 
 const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzrfogs14H_DYFZsY9EiYTCGzmntRL-ciqlbvnZ10udpnMi7gIvORkf8qJ2ETJ5ZPzK7g/exec';
 
-export default function SmartAssetMonitorFull() {
+export default function SmartAssetMonitorTIJ() {
   const [sheetData, setSheetData] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   
-  const [selectedMainSysIndex, setSelectedMainSysIndex] = useState(0);
+  const [selectedSysIndex, setSelectedSysIndex] = useState(0);
   const [selectedParentIndex, setSelectedParentIndex] = useState(0);
-  const [selectedSubNodeIndex, setSelectedSubNodeIndex] = useState(0);
+  const [selectedItemIndex, setSelectedItemIndex] = useState(0);
 
-  // ฟอร์มบันทึกการทำงานแบบละเอียดครบถ้วนตามฟิลด์หน้างานจริง
+  // ฟอร์มบันทึกการทำงาน
   const [formData, setFormData] = useState({
-    actionType: 'PM (บำรุงรักษา)',
+    actionType: 'PM (บำรุงรักษาเชิงป้องกัน)',
     jobDetails: '',
-    sparePart: '',
+    sparePart: '-',
     cost: '',
     technician: 'ทีม BSM-TIJ',
     status: 'ปกติ',
@@ -46,15 +46,16 @@ export default function SmartAssetMonitorFull() {
     loadData();
   }, []);
 
-  // 🛠️ แก้ไข: จัดกลุ่มโครงสร้างข้อมูลโดยใช้ rowIndex เป็น ID เพื่อให้ลิฟต์ทุกตัว/ทุกแถวแยกกันอิสระ 100% ไม่ยุบรวม
+  // 🛠️ Mapping โครงสร้างข้อมูลตามที่คุณระบุมา (แยกทุกแถวอิสระด้วย rowIndex)
   const structuredData = useMemo(() => {
     if (!sheetData.length) return [];
     const sysMap = new Map();
 
     sheetData.forEach((row, rowIndex) => {
+      // ดึงค่าตามคอลัมน์โครงสร้างจริง
       const mainSys = row["ระบบเครื่องจักร"] || row["ระบบ"] || "ระบบอื่นๆ";
-      const parentDev = row["เครื่องจักร"] || "อุปกรณ์หลัก";
-      const subDev = row["เครื่องจักรย่อย"] || row["ระบบประกอบเครื่องจักร"] || `รายการที่ ${rowIndex + 1}`;
+      const parentDev = row["เครื่องจักรย่อย"] || row["เครื่องจักร"] || "อุปกรณ์ทั่วไป";
+      const itemDev = row["ระบบประกอบเครื่องจักร"] || `รายการที่ ${rowIndex + 1}`;
 
       if (!sysMap.has(mainSys)) sysMap.set(mainSys, new Map());
       const parentMap = sysMap.get(mainSys);
@@ -64,9 +65,7 @@ export default function SmartAssetMonitorFull() {
 
       parentMap.get(parentDev).push({
         id: rowIndex,
-        name: subDev,
-        code: row["รหัสทรัพย์สิน"] || row["รหัส"] || `ITEM-${rowIndex}`,
-        part: row["การเปลี่ยนอะไหล่เครื่องจักร"] || row["รายการอะไหล่"] || "ไม่มีการเปลี่ยน",
+        name: itemDev,
         price: price,
         status: row["สถานะ"] || (price > 50000 ? 'Critical' : price > 10000 ? 'Warning' : 'Normal'),
         rawRow: row
@@ -76,8 +75,8 @@ export default function SmartAssetMonitorFull() {
     const result = [];
     sysMap.forEach((parentMap, mainSysName) => {
       const parentList = [];
-      parentMap.forEach((subList, parentName) => {
-        parentList.push({ name: parentName, subNodes: subList });
+      parentMap.forEach((itemList, parentName) => {
+        parentList.push({ name: parentName, items: itemList });
       });
       result.push({ name: mainSysName, parents: parentList });
     });
@@ -85,24 +84,24 @@ export default function SmartAssetMonitorFull() {
     return result;
   }, [sheetData]);
 
-  const currentMain = structuredData[selectedMainSysIndex] || structuredData[0];
-  const currentParent = currentMain?.parents[selectedParentIndex] || currentMain?.parents[0];
-  const currentSub = currentParent?.subNodes[selectedSubNodeIndex] || currentParent?.subNodes[0];
+  const currentSys = structuredData[selectedSysIndex] || structuredData[0];
+  const currentParent = currentSys?.parents[selectedParentIndex] || currentSys?.parents[0];
+  const currentItem = currentParent?.items[selectedItemIndex] || currentParent?.items[0];
 
   // ส่งข้อมูลบันทึกกลับไปที่ Google Sheet
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!currentSub) return;
+    if (!currentItem) return;
 
     setIsSubmitting(true);
     setSuccessMsg(false);
 
     const payload = {
       timestamp: new Date().toLocaleString('th-TH'),
-      rowIndex: currentSub.id,
-      mainSystem: currentMain?.name,
+      rowIndex: currentItem.id,
+      mainSystem: currentSys?.name,
       parentMachine: currentParent?.name,
-      subMachine: currentSub?.name,
+      subMachine: currentItem.name,
       ...formData
     };
 
@@ -114,7 +113,7 @@ export default function SmartAssetMonitorFull() {
         mode: 'no-cors'
       });
       setSuccessMsg(true);
-      setFormData({ actionType: 'PM (บำรุงรักษา)', jobDetails: '', sparePart: '', cost: '', technician: 'ทีม BSM-TIJ', status: 'ปกติ', note: '' });
+      setFormData({ actionType: 'PM (บำรุงรักษาเชิงป้องกัน)', jobDetails: '', sparePart: '-', cost: '', technician: 'ทีม BSM-TIJ', status: 'ปกติ', note: '' });
       setTimeout(() => setSuccessMsg(false), 4000);
       loadData();
     } catch (err) {
@@ -130,8 +129,8 @@ export default function SmartAssetMonitorFull() {
       {/* Header */}
       <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #1e293b', paddingBottom: '12px', marginBottom: '16px' }}>
         <div>
-          <span style={{ color: '#00f2ff', fontSize: '10px', letterSpacing: '2px', fontWeight: 'bold' }}>BSM-TIJ FACILITY MANAGEMENT</span>
-          <h1 style={{ margin: '2px 0 0 0', fontSize: '18px', color: '#fff' }}>⚡ ADVANCED ASSET MONITOR & WORK LOG HUB</h1>
+          <span style={{ color: '#00f2ff', fontSize: '10px', letterSpacing: '2px', fontWeight: 'bold' }}>BSM-TIJ FACILITY MANAGEMENT HUB</span>
+          <h1 style={{ margin: '2px 0 0 0', fontSize: '18px', color: '#fff' }}>⚡ ASSET MONITOR & WORK LOG SYSTEM</h1>
         </div>
         <button onClick={loadData} style={{ background: '#0f172a', color: '#00f2ff', border: '1px solid #00f2ff', padding: '6px 12px', borderRadius: '6px', cursor: 'pointer', fontSize: '11px' }}>
           🔄 โหลดข้อมูลใหม่ (Sync)
@@ -145,74 +144,74 @@ export default function SmartAssetMonitorFull() {
       ) : (
         <div style={{ display: 'grid', gridTemplateColumns: '260px 1fr 340px', gap: '16px', alignItems: 'start' }}>
           
-          {/* คอลัมน์ที่ 1: ระบบเครื่องจักรหลัก */}
+          {/* คอลัมน์ที่ 1: ระบบหลัก */}
           <div style={{ background: '#0f172a', border: '1px solid #1e293b', borderRadius: '8px', padding: '12px' }}>
-            <div style={{ fontSize: '11px', color: '#94a3b8', fontWeight: 'bold', marginBottom: '10px' }}>ระบบเครื่องจักรหลัก ({structuredData.length})</div>
+            <div style={{ fontSize: '11px', color: '#94a3b8', fontWeight: 'bold', marginBottom: '10px' }}>ระบบหลักทั้งหมด ({structuredData.length})</div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '75vh', overflowY: 'auto' }}>
               {structuredData.map((sys, idx) => (
                 <div 
                   key={idx}
-                  onClick={() => { setSelectedMainSysIndex(idx); setSelectedParentIndex(0); setSelectedSubNodeIndex(0); }}
+                  onClick={() => { setSelectedSysIndex(idx); setSelectedParentIndex(0); setSelectedItemIndex(0); }}
                   style={{
-                    background: selectedMainSysIndex === idx ? '#1e293b' : '#090d16',
-                    border: selectedMainSysIndex === idx ? '1px solid #00f2ff' : '1px solid #1e293b',
+                    background: selectedSysIndex === idx ? '#1e293b' : '#090d16',
+                    border: selectedSysIndex === idx ? '1px solid #00f2ff' : '1px solid #1e293b',
                     padding: '10px', borderRadius: '6px', cursor: 'pointer'
                   }}
                 >
                   <div style={{ fontSize: '12px', fontWeight: 'bold', color: '#fff' }}>{sys.name}</div>
-                  <div style={{ fontSize: '10px', color: '#00f2ff', marginTop: '2px' }}>{sys.parents.length} เครื่องจักร</div>
+                  <div style={{ fontSize: '10px', color: '#00f2ff', marginTop: '2px' }}>{sys.parents.length} หมวดอุปกรณ์</div>
                 </div>
               ))}
             </div>
           </div>
 
-          {/* คอลัมน์ที่ 2: โครงสร้างอุปกรณ์และข้อมูลดิบทั้งหมดจากแถว */}
+          {/* คอลัมน์ที่ 2: รายการอุปกรณ์และรายละเอียด */}
           <div style={{ background: '#0f172a', border: '1px solid #1e293b', borderRadius: '8px', padding: '16px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
             
-            {/* แท็บเลือกเครื่องจักร */}
+            {/* แท็บหมวดอุปกรณ์ย่อย */}
             <div style={{ display: 'flex', gap: '6px', overflowX: 'auto', paddingBottom: '6px', borderBottom: '1px solid #1e293b' }}>
-              {currentMain?.parents.map((p, idx) => (
+              {currentSys?.parents.map((p, idx) => (
                 <button
                   key={idx}
-                  onClick={() => { setSelectedParentIndex(idx); setSelectedSubNodeIndex(0); }}
+                  onClick={() => { setSelectedParentIndex(idx); setSelectedItemIndex(0); }}
                   style={{
                     background: selectedParentIndex === idx ? '#00f2ff' : '#090d16',
                     color: selectedParentIndex === idx ? '#070b14' : '#94a3b8',
                     border: '1px solid #1e293b', padding: '6px 10px', borderRadius: '4px', fontSize: '11px', fontWeight: 'bold', cursor: 'pointer', whiteSpace: 'nowrap'
                   }}
                 >
-                  {p.name} ({p.subNodes.length})
+                  {p.name} ({p.items.length})
                 </button>
               ))}
             </div>
 
-            {/* รายการเครื่องจักรย่อย (แสดงครบทุกตัว ไม่ยุบรวม) */}
+            {/* รายการชิ้นย่อยภายในหมวด (เช่น ลิฟต์ตัวที่ 1-5 จะแสดงครบถ้วนแยกการคลิก) */}
             <div>
-              <div style={{ fontSize: '11px', color: '#94a3b8', marginBottom: '8px' }}>รายการอุปกรณ์ย่อยทั้งหมดใต้: <span style={{ color: '#fff' }}>{currentParent?.name}</span></div>
+              <div style={{ fontSize: '11px', color: '#94a3b8', marginBottom: '8px' }}>รายการย่อยภายใต้: <span style={{ color: '#fff' }}>{currentParent?.name}</span></div>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '8px', maxHeight: '25vh', overflowY: 'auto' }}>
-                {currentParent?.subNodes.map((sub, idx) => (
+                {currentParent?.items.map((item, idx) => (
                   <div
-                    key={sub.id}
-                    onClick={() => setSelectedSubNodeIndex(idx)}
+                    key={item.id}
+                    onClick={() => setSelectedItemIndex(idx)}
                     style={{
                       background: '#090d16',
-                      border: selectedSubNodeIndex === idx ? '2px solid #00f2ff' : '1px solid #1e293b',
+                      border: selectedItemIndex === idx ? '2px solid #00f2ff' : '1px solid #1e293b',
                       padding: '8px', borderRadius: '6px', cursor: 'pointer'
                     }}
                   >
-                    <div style={{ fontSize: '11px', fontWeight: 'bold', color: '#fff' }}>{sub.name}</div>
-                    <div style={{ fontSize: '9px', color: '#00f2ff', marginTop: '2px' }}>ราคา/ค่าซ่อม: ฿{sub.price.toLocaleString()}</div>
+                    <div style={{ fontSize: '11px', fontWeight: 'bold', color: '#fff' }}>{item.name}</div>
+                    <div style={{ fontSize: '9px', color: '#00f2ff', marginTop: '2px' }}>สถานะ: {item.status}</div>
                   </div>
                 ))}
               </div>
             </div>
 
-            {/* ตารางแสดงข้อมูลดิบทั้งหมด (Raw Data Columns) ของอุปกรณ์ที่เลือก */}
-            {currentSub && (
+            {/* แสดงข้อมูลดิบ (Raw Data) ของแถวที่เลือก */}
+            {currentItem && (
               <div style={{ background: '#090d16', border: '1px solid #1e293b', borderRadius: '6px', padding: '12px' }}>
-                <div style={{ fontSize: '11px', color: '#00f2ff', fontWeight: 'bold', marginBottom: '8px' }}>📋 รายละเอียดข้อมูลจาก Google Sheet (Row Data)</div>
+                <div style={{ fontSize: '11px', color: '#00f2ff', fontWeight: 'bold', marginBottom: '8px' }}>📋 ข้อมูลจาก Google Sheet (Row #{currentItem.id + 1})</div>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px', maxHeight: '200px', overflowY: 'auto' }}>
-                  {Object.entries(currentSub.rawRow).map(([key, val], idx) => (
+                  {Object.entries(currentItem.rawRow).map(([key, val], idx) => (
                     <div key={idx} style={{ fontSize: '10px', background: '#0f172a', padding: '6px', borderRadius: '4px', border: '1px solid #1e293b' }}>
                       <span style={{ color: '#94a3b8', display: 'block' }}>{key}:</span>
                       <span style={{ color: '#fff', fontWeight: 'bold' }}>{String(val || '-')}</span>
@@ -224,17 +223,17 @@ export default function SmartAssetMonitorFull() {
 
           </div>
 
-          {/* คอลัมน์ที่ 3: ฟอร์มบันทึกการทำงานแบบเต็มรูปแบบ */}
+          {/* คอลัมน์ที่ 3: ฟอร์มบันทึกการทำงาน */}
           <div style={{ background: '#0f172a', border: '1px solid #1e293b', borderRadius: '8px', padding: '16px' }}>
             <div style={{ fontSize: '12px', color: '#00f2ff', fontWeight: 'bold', borderBottom: '1px solid #1e293b', paddingBottom: '8px', marginBottom: '12px' }}>
               📝 บันทึกประวัติการปฏิบัติงาน
             </div>
 
-            {currentSub ? (
+            {currentItem ? (
               <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                 <div style={{ background: '#090d16', padding: '8px', borderRadius: '4px', border: '1px solid #1e293b' }}>
-                  <div style={{ fontSize: '9px', color: '#94a3b8' }}>เป้าหมายอุปกรณ์ (Row #{currentSub.id + 1}):</div>
-                  <div style={{ fontSize: '11px', color: '#10b981', fontWeight: 'bold' }}>{currentSub.name}</div>
+                  <div style={{ fontSize: '9px', color: '#94a3b8' }}>เป้าหมาย:</div>
+                  <div style={{ fontSize: '11px', color: '#10b981', fontWeight: 'bold' }}>{currentItem.name}</div>
                 </div>
 
                 <div>
@@ -252,24 +251,13 @@ export default function SmartAssetMonitorFull() {
                 </div>
 
                 <div>
-                  <label style={{ fontSize: '10px', color: '#94a3b8', display: 'block', marginBottom: '2px' }}>รายละเอียดการทำงาน</label>
+                  <label style={{ fontSize: '10px', color: '#94a3b8', display: 'block', marginBottom: '2px' }}>รายละเอียดงาน</label>
                   <input 
                     type="text" 
-                    placeholder="เช่น ล้างคอยล์, เช็คกระแสไฟฟ้า" 
+                    placeholder="เช่น ตรวจสอบสลิง, เช็คระบบประตู" 
                     value={formData.jobDetails}
                     onChange={(e) => setFormData({...formData, jobDetails: e.target.value})}
                     required
-                    style={{ width: '100%', background: '#090d16', color: '#fff', border: '1px solid #1e293b', padding: '6px', borderRadius: '4px', fontSize: '11px', boxSizing: 'border-box' }}
-                  />
-                </div>
-
-                <div>
-                  <label style={{ fontSize: '10px', color: '#94a3b8', display: 'block', marginBottom: '2px' }}>รายการอะไหล่ที่ใช้</label>
-                  <input 
-                    type="text" 
-                    placeholder="ระบุชื่ออะไหล่ (ถ้ามี)" 
-                    value={formData.sparePart}
-                    onChange={(e) => setFormData({...formData, sparePart: e.target.value})}
                     style={{ width: '100%', background: '#090d16', color: '#fff', border: '1px solid #1e293b', padding: '6px', borderRadius: '4px', fontSize: '11px', boxSizing: 'border-box' }}
                   />
                 </div>
@@ -286,15 +274,15 @@ export default function SmartAssetMonitorFull() {
                 </div>
 
                 <div>
-                  <label style={{ fontSize: '10px', color: '#94a3b8', display: 'block', marginBottom: '2px' }}>สถานะเครื่องหลังปฏิบัติงาน</label>
+                  <label style={{ fontSize: '10px', color: '#94a3b8', display: 'block', marginBottom: '2px' }}>สถานะเครื่องหลังทำ</label>
                   <select 
                     value={formData.status} 
                     onChange={(e) => setFormData({...formData, status: e.target.value})}
                     style={{ width: '100%', background: '#090d16', color: '#fff', border: '1px solid #1e293b', padding: '6px', borderRadius: '4px', fontSize: '11px' }}
                   >
-                    <option value="ปกติ (Normal)">🟢 ปกติ (Normal)</option>
-                    <option value="เฝ้าระวัง (Warning)">🟡 เฝ้าระวัง (Warning)</option>
-                    <option value="ชำรุดรอซ่อม (Critical)">🔴 ชำรุดรอซ่อม (Critical)</option>
+                    <option value="ปกติ">🟢 ปกติ (Normal)</option>
+                    <option value="เฝ้าระวัง">🟡 เฝ้าระวัง (Warning)</option>
+                    <option value="ชำรุดรอซ่อม">🔴 ชำรุดรอซ่อม (Critical)</option>
                   </select>
                 </div>
 
@@ -305,16 +293,6 @@ export default function SmartAssetMonitorFull() {
                     value={formData.technician}
                     onChange={(e) => setFormData({...formData, technician: e.target.value})}
                     required
-                    style={{ width: '100%', background: '#090d16', color: '#fff', border: '1px solid #1e293b', padding: '6px', borderRadius: '4px', fontSize: '11px', boxSizing: 'border-box' }}
-                  />
-                </div>
-
-                <div>
-                  <label style={{ fontSize: '10px', color: '#94a3b8', display: 'block', marginBottom: '2px' }}>หมายเหตุ</label>
-                  <textarea 
-                    rows="2"
-                    value={formData.note}
-                    onChange={(e) => setFormData({...formData, note: e.target.value})}
                     style={{ width: '100%', background: '#090d16', color: '#fff', border: '1px solid #1e293b', padding: '6px', borderRadius: '4px', fontSize: '11px', boxSizing: 'border-box' }}
                   />
                 </div>
